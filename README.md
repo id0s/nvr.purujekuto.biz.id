@@ -1,0 +1,1 @@
+# nvr.purujekuto.biz.id
