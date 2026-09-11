@@ -1589,6 +1589,74 @@
             flex: 1 !important;
         }
 
+        /* Auto-Return Countdown Banner */
+        .grid-auto-return-banner {
+            display: none;
+            position: absolute;
+            top: 52px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(59, 130, 246, 0.45);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px rgba(59, 130, 246, 0.2);
+            border-radius: 9999px;
+            padding: 7px 16px;
+            align-items: center;
+            gap: 12px;
+            color: #f8fafc;
+            font-size: 12px;
+            font-weight: 500;
+            animation: slideDownReturnBanner 250ms cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: auto;
+        }
+        @keyframes slideDownReturnBanner {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -12px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+        .grid-return-btn-stay {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #e2e8f0;
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 150ms ease;
+        }
+        .grid-return-btn-stay:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: #ffffff;
+        }
+        .grid-return-btn-back {
+            background: #2563eb;
+            border: 1px solid rgba(96, 165, 250, 0.5);
+            color: #ffffff;
+            font-size: 11px;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            cursor: pointer;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+            transition: all 150ms ease;
+        }
+        .grid-return-btn-back:hover {
+            background: #1d4ed8;
+            transform: scale(1.03);
+        }
+
         /* ==========================================
            PTZ OVERLAY
         ========================================== */
@@ -2336,6 +2404,22 @@
                             <button id="floatingExitFullscreenBtn" class="floating-fs-exit-btn" onclick="togglePlayerFullscreen()" title="Keluar Layar Penuh (Esc)">
                                 ✕ Keluar Fullscreen (Esc)
                             </button>
+
+                            <!-- Grid Auto-Return Countdown Floating Banner -->
+                            <div id="gridAutoReturnBanner" class="grid-auto-return-banner">
+                                <span style="display:inline-flex;align-items:center;gap:7px;">
+                                    <span style="width:8px;height:8px;border-radius:50%;background:#38bdf8;box-shadow:0 0 10px #38bdf8;"></span>
+                                    <span>Fokus Sementara · Kembali ke Grid dalam <b id="gridReturnSecs" style="color:#38bdf8;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;">10</b>s</span>
+                                </span>
+                                <div style="display:flex;align-items:center;gap:6px;">
+                                    <button type="button" class="grid-return-btn-stay" onclick="cancelGridReturn()" title="Batalkan timer dan tetap di kamera ini">
+                                        ✕ Tetap Disini
+                                    </button>
+                                    <button type="button" class="grid-return-btn-back" onclick="returnToGridNow()" title="Langsung kembali ke tampilan grid">
+                                        📺 Grid Sekarang
+                                    </button>
+                                </div>
+                            </div>
 
                             <!-- Video body -->
                             <div class="player-body">
@@ -4566,6 +4650,9 @@
         }
 
         function setGridModeActive(active) {
+            if (active) {
+                clearGridReturnTimer();
+            }
             isGridMode = active;
             const singleView = document.getElementById('singlePlayerView');
             const gridView = document.getElementById('gridPlayerView');
@@ -4823,7 +4910,63 @@
             });
         }
 
+        let gridReturnInterval = null;
+        let gridReturnSecondsLeft = 10;
+        let savedGridCameraChecklist = [];
+
+        function startGridReturnTimer(seconds = 10) {
+            clearGridReturnTimer();
+            gridReturnSecondsLeft = seconds;
+            
+            const banner = document.getElementById('gridAutoReturnBanner');
+            const secEl = document.getElementById('gridReturnSecs');
+            if (banner && secEl) {
+                secEl.innerText = gridReturnSecondsLeft;
+                banner.style.display = 'flex';
+            }
+
+            gridReturnInterval = setInterval(() => {
+                gridReturnSecondsLeft--;
+                if (secEl) secEl.innerText = gridReturnSecondsLeft;
+                if (gridReturnSecondsLeft <= 0) {
+                    clearGridReturnTimer();
+                    returnToGridNow();
+                }
+            }, 1000);
+        }
+
+        function clearGridReturnTimer() {
+            if (gridReturnInterval) {
+                clearInterval(gridReturnInterval);
+                gridReturnInterval = null;
+            }
+            const banner = document.getElementById('gridAutoReturnBanner');
+            if (banner) banner.style.display = 'none';
+        }
+
+        function cancelGridReturn() {
+            clearGridReturnTimer();
+            showToast('Tetap di tampilan kamera tunggal', 'info');
+        }
+
+        function returnToGridNow() {
+            clearGridReturnTimer();
+            if (savedGridCameraChecklist && savedGridCameraChecklist.length > 0) {
+                const allCbs = Array.from(document.querySelectorAll('.camera-select-checkbox'));
+                allCbs.forEach(cb => {
+                    cb.checked = savedGridCameraChecklist.includes(cb.dataset.src);
+                });
+            }
+            setGridModeActive(true);
+        }
+
         function switchToSingleCameraView(src, title) {
+            // Simpan checklist kamera grid yang sedang aktif sebelum beralih
+            const currentChecked = Array.from(document.querySelectorAll('.camera-select-checkbox:checked')).map(cb => cb.dataset.src);
+            if (currentChecked.length > 0) {
+                savedGridCameraChecklist = currentChecked;
+            }
+
             selectedCamera = src;
             
             document.querySelectorAll('#cameraListContainer .cam-row').forEach(item => {
@@ -4840,6 +4983,8 @@
             
             setGridModeActive(false);
             showLive(src, title);
+            // Jeda 10 detik otomatis kembali ke Grid
+            startGridReturnTimer(10);
         }
 
         function handleCameraSelect(src, title) {
@@ -5062,8 +5207,14 @@
             });
             
             if (isGridMode) {
+                const currentChecked = Array.from(document.querySelectorAll('.camera-select-checkbox:checked')).map(cb => cb.dataset.src);
+                if (currentChecked.length > 0) {
+                    savedGridCameraChecklist = currentChecked;
+                }
                 setGridModeActive(false);
+                startGridReturnTimer(10);
             } else {
+                clearGridReturnTimer();
                 const nameVal = item.dataset.title;
                 showLive(selectedCamera, nameVal);
             }
@@ -5190,6 +5341,7 @@
         }
 
         function playRecording(filename, displayTime) {
+            clearGridReturnTimer();
             liveFrame.src = 'about:blank';
 
             const ptzOverlay = document.getElementById('ptzControlOverlay');
